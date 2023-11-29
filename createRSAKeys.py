@@ -23,5 +23,5 @@ public_pem = public_key.public_bytes(
 
 print(private_pem.decode())
 print(public_pem.decode())
-open("private","w").write(private_pem.decode())
-open("public","w").write(public_pem.decode())
+open("private.txt","w").write(private_pem.decode())
+open("public.txt","w").write(public_pem.decode())
